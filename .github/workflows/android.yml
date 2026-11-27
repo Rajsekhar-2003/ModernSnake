@@ -1,0 +1,89 @@
+
+name: Build Godot Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Export Android APK
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses || true
+
+          sdkmanager \
+            "platform-tools" \
+            "build-tools;35.0.1" \
+            "platforms;android-35" \
+            "cmdline-tools;latest" \
+            "cmake;3.10.2.4988404" \
+            "ndk;28.1.13356709"
+
+      - name: Download Godot 4.5
+        run: |
+          wget -q \
+            https://github.com/godotengine/godot/releases/download/4.5-stable/Godot_v4.5-stable_linux.x86_64.zip
+
+          unzip -q Godot_v4.5-stable_linux.x86_64.zip
+          chmod +x Godot_v4.5-stable_linux.x86_64
+          sudo mv Godot_v4.5-stable_linux.x86_64 /usr/local/bin/godot
+
+      - name: Install Godot export templates
+        run: |
+          wget -q \
+            https://github.com/godotengine/godot/releases/download/4.5-stable/Godot_v4.5-stable_export_templates.tpz
+
+          mkdir -p ~/.local/share/godot/export_templates/4.5.stable
+
+          unzip -q Godot_v4.5-stable_export_templates.tpz -d templates
+
+          cp -r templates/templates/. \
+            ~/.local/share/godot/export_templates/4.5.stable/
+
+          if [ -f templates/version.txt ]; then
+            cp templates/version.txt \
+              ~/.local/share/godot/export_templates/4.5.stable/
+          fi
+
+      - name: Check project
+        run: |
+          godot --version
+          godot --headless --editor --path . --quit
+
+      - name: Build Android APK
+        run: |
+          mkdir -p build
+
+          godot --headless \
+            --path . \
+            --export-debug "Android" \
+            build/ModernSnake.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ModernSnake-Android-APK
+          path: build/ModernSnake.apk
+          if-no-files-found: error
+          retention-days: 14
