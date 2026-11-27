@@ -1,82 +1,72 @@
+
 name: Build Godot Android APK
 
 on:
   push:
-  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
-jobs:
-  build:
-    name: Build Android APK
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
-    env:
-      GODOT_VERSION: 4.3
-      EXPORT_PRESET: Android
-      PROJECT_DIR: ${{ github.workspace }}
+jobs:
+  build-android:
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Check out repository
+      - name: Checkout project
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Set up Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
-            cmake;3.22.1
-            ndk;27.1.12297006
+          packages: ''
 
-      - name: Download Godot
+      - name: Install Android build packages
         run: |
-          GODOT_ZIP="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${GODOT_ZIP}"
-          unzip -q "$GODOT_ZIP"
-          chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
-          echo "GODOT_BIN=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+          sdkmanager --install \
+            "platform-tools" \
+            "build-tools;35.0.1" \
+            "platforms;android-35" \
+            "cmake;3.10.2.4988404" \
+            "ndk;28.1.13356709"
 
-      - name: Download Godot export templates
+      - name: Download Godot 4.5
         run: |
-          TEMPLATE_ZIP="Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
-          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${TEMPLATE_ZIP}"
+          wget -q https://github.com/godotengine/godot/releases/download/4.5-stable/Godot_v4.5-stable_linux.x86_64.zip
+          unzip -q Godot_v4.5-stable_linux.x86_64.zip
+          chmod +x Godot_v4.5-stable_linux.x86_64
+          sudo mv Godot_v4.5-stable_linux.x86_64 /usr/local/bin/godot
 
-          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
-          unzip -q "$TEMPLATE_ZIP"
-          mv templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
-
-      - name: Configure Android export
+      - name: Install Godot export templates
         run: |
-          mkdir -p "$HOME/.config/godot"
-          cat > "$HOME/.config/godot/editor_settings-4.tres" <<'EOF'
-[gd_resource type="EditorSettings" format=3]
+          wget -q https://github.com/godotengine/godot/releases/download/4.5-stable/Godot_v4.5-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.5.stable
+          unzip -q Godot_v4.5-stable_export_templates.tpz -d templates
+          cp -r templates/templates/. ~/.local/share/godot/export_templates/4.5.stable/
 
-[resource]
-export/android/android_sdk_path = "/usr/local/lib/android/sdk"
-export/android/java_sdk_path = "/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.13-11/x64"
-EOF
+      - name: Import Godot project
+        run: |
+          godot --headless --editor --path . --quit
 
-      - name: Export Android APK
+      - name: Build Android APK
         run: |
           mkdir -p build
-          "$GODOT_BIN" \
-            --headless \
-            --path "$PROJECT_DIR" \
-            --export-release "$EXPORT_PRESET" \
+          godot --headless --path . \
+            --export-debug "Android" \
             build/ModernSnake.apk
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ModernSnake-Android
-          path: build/*.apk
+          name: ModernSnake-Android-APK
+          path: build/ModernSnake.apk
           if-no-files-found: error
+          retention-days: 14
